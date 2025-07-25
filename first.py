@@ -1,89 +1,116 @@
 import tkinter as tk
+import requests
+import threading
 import random
-import os
-import json
 
-# List of jokes
-JOKES = [
-    "Why don't scientists trust atoms? Because they make up everything!",
-    "Why did the math book look sad? Because it had too many problems.",
-    "Why did the scarecrow win an award? Because he was outstanding in his field!",
-    "Why don't programmers like nature? It has too many bugs.",
-    "Why do we tell actors to 'break a leg?' Because every play has a cast!",
-    "Parallel lines have so much in common. It’s a shame they’ll never meet.",
-    "Why did the computer go to the doctor? Because it had a virus!",
-    "Why was the math lecture so long? The professor kept going off on a tangent.",
-    "Why did the bicycle fall over? Because it was two-tired!",
-    "Why did the tomato turn red? Because it saw the salad dressing!"
+# Vibrant color palette
+BG_COLORS = ["#f0f4f8", "#ffe066", "#f38181", "#95e1d3", "#fce38a", "#eaffd0", "#a8d8ea", "#f7cac9", "#b5ead7", "#ffb347"]
+JOKE_EMOJIS = ["😂", "🤣", "😹", "😆", "😜", "😎", "🤪", "😺", "😹", "😻", "😹"]
+
+JOKE_API_URLS = [
+    # Official Joke API
+    "https://official-joke-api.appspot.com/jokes/random",
+    # JokeAPI (safe mode)
+    "https://v2.jokeapi.dev/joke/Any?type=single&safe-mode",
+    # Chuck Norris
+    "https://api.chucknorris.io/jokes/random"
 ]
-
-# File to store shown jokes
-JOKE_STATE_FILE = os.path.expanduser("~/.joke_gui_state.json")
-
-def get_unseen_jokes():
-    if os.path.exists(JOKE_STATE_FILE):
-        try:
-            with open(JOKE_STATE_FILE, 'r') as f:
-                state = json.load(f)
-            shown = set(state.get('shown', []))
-        except Exception:
-            shown = set()
-    else:
-        shown = set()
-    unseen = [j for j in JOKES if j not in shown]
-    return unseen, shown
-
-def mark_joke_as_shown(joke):
-    if os.path.exists(JOKE_STATE_FILE):
-        try:
-            with open(JOKE_STATE_FILE, 'r') as f:
-                state = json.load(f)
-            shown = set(state.get('shown', []))
-        except Exception:
-            shown = set()
-    else:
-        shown = set()
-    shown.add(joke)
-    with open(JOKE_STATE_FILE, 'w') as f:
-        json.dump({'shown': list(shown)}, f)
-
-def reset_joke_state():
-    if os.path.exists(JOKE_STATE_FILE):
-        os.remove(JOKE_STATE_FILE)
 
 class JokeApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Joke of the Day!")
-        self.root.geometry("500x300")
-        self.root.configure(bg="#f0f4f8")
-        self.joke_label = tk.Label(
-            root, text="", wraplength=440, font=("Arial", 16, "bold"),
-            bg="#f0f4f8", fg="#2d3a4b", justify=tk.CENTER, pady=30
-        )
-        self.joke_label.pack(expand=True)
-        self.next_btn = tk.Button(
-            root, text="Next Joke", command=self.show_joke,
-            bg="#4f8cff", fg="white", font=("Arial", 12, "bold"),
-            activebackground="#357ae8", relief=tk.RAISED, bd=3, cursor="hand2"
-        )
-        self.next_btn.pack(pady=10)
-        self.show_joke()
+        self.root.title("😂 Funniest Joke Machine 😂")
+        self.bg_color = random.choice(BG_COLORS)
+        self.root.configure(bg=self.bg_color)
+        self.root.geometry("600x350")
+        self.root.minsize(400, 250)
+        self.root.resizable(False, False)
 
-    def show_joke(self):
-        unseen, shown = get_unseen_jokes()
-        if not unseen:
-            reset_joke_state()
-            unseen, shown = get_unseen_jokes()
-            msg = "You've seen all the jokes! Starting over..."
-            self.joke_label.config(text=msg)
-            self.root.after(1500, self.show_joke)
-            return
-        joke = random.choice(unseen)
-        self.joke_label.config(text=joke)
-        mark_joke_as_shown(joke)
+        # Header
+        self.header = tk.Label(
+            root, text="Joke of the Moment!", font=("Comic Sans MS", 24, "bold"),
+            bg=self.bg_color, fg="#2d3a4b", pady=10
+        )
+        self.header.pack(pady=(20, 0))
+
+        # Emoji
+        self.emoji_label = tk.Label(
+            root, text=random.choice(JOKE_EMOJIS), font=("Arial", 40),
+            bg=self.bg_color
+        )
+        self.emoji_label.pack(pady=(0, 10))
+
+        # Joke text
+        self.joke_var = tk.StringVar()
+        self.joke_label = tk.Label(
+            root, textvariable=self.joke_var, wraplength=520,
+            font=("Segoe UI", 16, "bold"), bg=self.bg_color, fg="#333",
+            justify=tk.CENTER, padx=20, pady=20, relief=tk.RIDGE, bd=3
+        )
+        self.joke_label.pack(expand=True, fill=tk.BOTH, padx=30, pady=(0, 10))
+
+        # Next joke button
+        self.next_btn = tk.Button(
+            root, text="🤣 Next Joke! ", command=self.get_joke,
+            bg="#4f8cff", fg="white", font=("Arial", 14, "bold"),
+            activebackground="#357ae8", activeforeground="#fff",
+            relief=tk.RAISED, bd=4, cursor="hand2", padx=18, pady=8,
+            highlightthickness=0
+        )
+        self.next_btn.pack(pady=(0, 20))
+
+        # Status
+        self.status_var = tk.StringVar()
+        self.status_label = tk.Label(
+            root, textvariable=self.status_var, font=("Arial", 10),
+            bg=self.bg_color, fg="#888"
+        )
+        self.status_label.pack()
+
+        self.get_joke()
+
+    def get_joke(self):
+        self.joke_var.set("Fetching a hilarious joke... Please wait!")
+        self.emoji_label.config(text=random.choice(JOKE_EMOJIS))
+        self.status_var.set("")
+        threading.Thread(target=self._fetch_joke, daemon=True).start()
+
+    def _fetch_joke(self):
+        for _ in range(3):  # Try up to 3 times
+            api_url = random.choice(JOKE_API_URLS)
+            try:
+                resp = requests.get(api_url, timeout=5)
+                if resp.status_code == 200:
+                    joke = self.parse_joke(api_url, resp.json())
+                    if joke:
+                        self.show_joke(joke)
+                        return
+            except Exception as e:
+                continue
+        self.show_joke("😢 Sorry, couldn't fetch a joke right now. Check your internet connection!")
+        self.status_var.set("Network error. Try again later.")
+
+    def parse_joke(self, api_url, data):
+        if "official-joke-api" in api_url:
+            return f"{data.get('setup', '')}\n{data.get('punchline', '')}".strip()
+        elif "jokeapi" in api_url:
+            return data.get('joke')
+        elif "chucknorris" in api_url:
+            return data.get('value')
+        return None
+
+    def show_joke(self, joke):
+        self.joke_var.set(joke)
+        self.emoji_label.config(text=random.choice(JOKE_EMOJIS))
 
 if __name__ == "__main__":
+    try:
+        import requests
+    except ImportError:
+        import sys
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
+        import requests
     root = tk.Tk()
     app = JokeApp(root)
     root.mainloop()
